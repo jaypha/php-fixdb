@@ -1,6 +1,6 @@
 <?php
 /*
- * key/value table in MySQL.
+ * A database create/update/synchronise tool.
  *
  * Copyright (C) 2017 Jaypha
  *
@@ -633,6 +633,12 @@ class FixDB
     return $x;
   }
 
+  static function enum_type($values, $nullable = false, $default = NULL)
+  {
+    $x = [ "type"=>"enum", "values" => $values, "nullable" => $nullable ];
+    if ($default !== NULL) $x["default"] = $default;
+    return $x;
+  }
 }
 
 //----------------------------------------------------------------------------
