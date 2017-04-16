@@ -1,6 +1,6 @@
 <?php
 /*
- * key/value table in MySQL.
+ * A database create/update/synchronise tool.
  *
  * Copyright (C) 2017 Jaypha
  *
@@ -488,264 +488,8 @@ class FixDB
     return $query;
   }
 
-/*
-  
   //-------------------------------------------------------------------------
 
-  function HasColumn($name)
-  {
-    return array_key_exists($name, $this->Items);
-  }
-  
-  //-------------------------------------------------------------------------
-
-  function fixTable()
-  {
-    echo "Table: {$this->def['table_name']}";
-
-    $this->columnDef =& $def['columns'];
-    if (!empty($def['indicies']))
-      $this->indicies =& $def['indicies'];
-    else
-      $this->indicies = [];
-
-      // $s contains the SQL commands to change the database.
-      $s = array();
-      
-      // Original tabe name, may be different of "oldname" is set.
-      $tablename = $this->thedef['table_name'];
-
-      if (!$this->Database->TableExists($this->thedef['table_name']))
-      {
-        if
-        (
-          isset($this->thedef['oldname']) &&
-          $this->Database->TableExists($this->thedef['oldname'])
-        )
-        {
-          echo " - rename";
-          $s[] = "rename to $tablename";
-          $tablename = $this->thedef['oldname'];
-        }
-        else
-        {
-          echo " - create<br/>\n";
-          $this->CreateTable();
-          return true;
-        }
-      }
-      
-      $info = $this->Database->QueryData("show columns from $tablename");
-      $olddef = array();
-
-      // info contains the column information extracted from the database.
-      // olddef contains the same information but indexed according to the
-      // column name.
-
-      // Check for columns that are in the existing def but not in the new
-      // def.
-      foreach ($info as &$column)
-      {
-          if ($column['Field'] == 'id')
-          {
-              if (!empty($this->thedef['noid']))
-              {
-                  $s[] = 'drop id';
-              }
-              else
-                  $olddef['id'] =& $column;
-          }
-          else
-          {
-              if (!isset($this->Items[$column['Field']]))
-              {
-                  $s[$column['Field']] = 'drop `'.$column['Field'].'`';
-              }
-              $olddef[$column['Field']] =& $column;
-          }
-      }
-
-      // Now check for an id column that is in the new def but not the
-      // existing def.
-      if (empty($this->thedef['noid']) && !isset($olddef['id']))
-      {
-          $s[] = 'add column `id` int(11) unsigned auto_increment primary key';
-      }
-
-      // Go through each item in the new def.
-      foreach ($this->Items as $name => &$field)
-      {
-          if (!isset($olddef[$name]))
-          {
-              // If its not in the old def then add it.
-              if (isset($field['oldname']) && isset($olddef[$field['oldname']]))
-              {
-                  // change name
-                  unset($s[$field['oldname']]);
-                  $s[] = "change {$field['oldname']} ".$this->GetColumnDef($name, $field, true);
-              }
-              else
-              {
-                  $s[] = 'add column '.$this->GetColumnDef($name, $field);
-              }
-          }
-          else
-          {
-              $change = false;
-              
-              // check type
-              $type = $this->GetTypeString($field);
-
-              if ($type !== $olddef[$name]['Type'])
-                  $change += 1;
-
-              // check 'null'
-              if (!empty($field["nullable"]) != ($olddef[$name]["Null"] == "YES"))
-                  $change += 2;
-
-              // check 'default'
-              $default = isset($field["default"])?$field["default"]:NULL;
-              if ($olddef[$name]["Default"] != $default)
-                  $change += 4;
-
-              if ($change)
-              {
-                  $s[] = "modify ".$this->GetColumnDef($name, $field, true);
-              }
-          }
-      }
-
-      // Check indicies.
-      
-      $olddef = $this->GetIndicies($tablename);
-      foreach ($olddef as $name => &$index)
-      {
-          if ($name == "PRIMARY") continue; // Don't touch primary key
-          
-          if (!isset($this->Indicies[$name]))
-          {
-              $s[$name] = "drop index `{$name}`";
-          }
-      }
-
-      // Go through each item in the new def.
-
-      foreach ($this->Indicies as $name => &$index)
-      {
-          if (!isset($olddef[$name]))
-          {
-              $s[] = 'add '.$this->GetIndexDef($name, $index);
-          }
-          else
-          {
-              if
-              (
-                  !empty($index['unique']) != !empty($olddef[$name]['unique']) ||
-                  $index['columns'] !== $olddef[$name]['columns']
-              )
-              {
-                  $s[] = "drop index `$name`";
-                  $s[] = "add ".$this->GetIndexDef($name, $index);
-              }
-          }
-      }
-      
-      if (count($s))
-      {
-          echo " - alter<br/>\n";
-          $this->Database->Query("alter table $tablename ".implode(' , ',$s));
-          return true;
-      }
-      echo "<br/>\n";
-      return false;
-  }
-
-  //-------------------------------------------------------------------------
-
-  function Update($db_id, &$inputs)
-  {
-    $sets = array();
-    foreach ($inputs as $name => &$input)
-    {
-      if (!isset($this->thedef['columns'][$name])) continue;
-      
-      if ($input === NULL)
-         $sets[] = "`$name` = null";
-      else switch ($this->thedef['columns'][$name]['type'])
-      {
-      case DB_INTEGER:
-      case DB_BOOLEAN:
-      case DB_FOREIGN:
-      case DB_DATETIME:
-        $sets[] = "`$name` = ".(int)$input;
-        break;
-      case DB_FLOAT:
-      case DB_DECIMAL:
-        $sets[] = "`$name` = ".(float)$input;
-        break;
-      case DB_PASSWORD:
-        $sets[] = "`$name` = ".($this->Database->QuoteSmart($input));
-        break;
-      case DB_SERIALIZED:
-        $sets[] = "`$name` = ".($this->Database->QuoteSmart(serialize($input)));
-        break;
-      case DB_ARRAY:
-        $sets[] = "`$name` = ".($this->Database->QuoteSmart(implode(",",$input)));
-        break;
-      default:
-        $sets[] = "`$name` = ".($this->Database->QuoteSmart($input));
-      }
-    }
-    if (count($sets) == 0)
-      return NULL;
-
-    if ($db_id == NULL)
-    {
-        $this->Database->Query("insert into {$this->thedef['table_name']} set ".implode(',',$sets));
-        return mysql_insert_id($this->Database->Link);
-    }
-    else
-    {
-        $this->Database->Query("update {$this->thedef['table_name']} set ".implode(',',$sets)." where id=$db_id");
-        return $db_id;
-    }
-  }
-
-  //-------------------------------------------------------------------------
-  
-  function __get($property)
-  {
-    switch ($property)
-    {
-    case 'TableName':
-      return $this->thedef['table_name'];
-    case 'Label':
-      return $this->thedef['label'];
-    case 'TheDef':
-      return $this->thedef;
-    case 'HasID':
-      return empty($this->thedef['noid']);
-    default:
-      throw new Exception
-      (
-          "Cannot get parameter '$property' in ".get_class($this)
-      );
-    }
-  }
-
-  //-------------------------------------------------------------------------
-
-  static function Fix($def)
-  {
-    $dd = new DBDefinition($def);
-    $dd->FixTable();
-  }
-  
-  //-------------------------------------------------------------------------
-
-  
-  //-------------------------------------------------------------------------
-*/
   function getFunctionSql($def)
   {
     $query = "CREATE DEFINER = ";
@@ -814,6 +558,8 @@ function foreign_type($table, $column, $nullable = false)
     return [ "type"=>"foreign", "table" => $table, "column" => $column ];
 }
 
+//----------------------------------------------------------------------------
+
 function int_type($nullable = false, $default = NULL)
 { 
   if ($default !== NULL)
@@ -822,15 +568,21 @@ function int_type($nullable = false, $default = NULL)
     return array("type"=> "int", "nullable"=>$nullable);
 }
 
+//----------------------------------------------------------------------------
+
 function bool_type($nullable = false, $default = false)
 {
   return array("type"=>"bool", "default"=>$default?"1":"0", "nullable"=>$nullable);
 }
 
+//----------------------------------------------------------------------------
+
 function text_type($nullable = false)
 {
   return [ "type"=>"text", "nullable"=>$nullable ];
 }
+
+//----------------------------------------------------------------------------
 
 function datetime_type($nullable = false, $default = NULL)
 {
@@ -840,6 +592,8 @@ function datetime_type($nullable = false, $default = NULL)
     return array("type"=>"datetime", "nullable"=>$nullable);
 }
 
+//----------------------------------------------------------------------------
+
 function date_type($nullable = false, $default = NULL)
 {
   if ($default == NULL)
@@ -847,6 +601,8 @@ function date_type($nullable = false, $default = NULL)
   else
     return [ "type" => "date", "nullable" => $nullable, "default" => $default ];
 }
+
+//----------------------------------------------------------------------------
 
 function timestamp_type($nullable = false, $update = false, $default = "CURRENT_TIMESTAMP")
 {
@@ -858,6 +614,8 @@ function timestamp_type($nullable = false, $update = false, $default = "CURRENT_
     return array("type"=>"timestamp", "nullable"=>$nullable, "update" => $update);
 }
 
+//----------------------------------------------------------------------------
+
 function decimal_type($units, $places, $nullable = false, $default = NULL)
 {
   if ($default !== NULL)
@@ -866,11 +624,22 @@ function decimal_type($units, $places, $nullable = false, $default = NULL)
     return array("type"=>"decimal", "size"=> array($units, $places), "nullable"=>$nullable);
 }
 
+//----------------------------------------------------------------------------
+
 function string_type($default = NULL, $length = NULL)
 {
   $x = ["type"=>"string"];
   if ($length) $x["size"] = $length;
   if ($default !== NULL) $x["default"] = $defualt;
+  return $x;
+}
+
+//----------------------------------------------------------------------------
+
+function enum_type($values, $nullable = false, $default = NULL)
+{
+  $x = [ "type"=>"enum", "values" => $values, "nullable" => $nullable ];
+  if ($default !== NULL) $x["default"] = $default;
   return $x;
 }
 
