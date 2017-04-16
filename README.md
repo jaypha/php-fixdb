@@ -12,7 +12,7 @@ Many tools exist these days for database maintenace, called "migration". They
 usually work by specifying the changes needed to the database, and then running
 the program to update the database.
 
-FixDB works a little different. You sepcify the datase definition you want.
+FixDB works a little different. You sepcify the database definition you want.
 The tool compares this definition to what exists in the database, and then
 generates the SQL to alter the database to match. The changes are non-destructive
 as much a spossible.
