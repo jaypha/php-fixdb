@@ -443,6 +443,9 @@ class FixDB
 
     foreach ($newDef["indicies"] as $name => $idx)
     {
+      if (!array_key_exists("columns", $idx))
+        $idx["columns"] = [ $name ];
+
       if (!array_key_exists($name, $oldDef["indicies"]))
       {
         if ($this->verbose) echo "  add index '$name'\n";
@@ -564,81 +567,101 @@ class FixDB
 
   //----------------------------------------------------------------------------
   // The following functions are shortcut definitions of various database types.
+  // Under strict rules, any field that is not null, cannot have an implied
+  // default.
 
-  static function foreign_type($table, $column = "id", $nullable = false)
+  static function stringType($length = 255, $default = "")
+  {
+    $typeDef = ["type"=>"string"];
+    if ($length) $typeDef["size"] = $length;
+    if ($default !== NULL) $typeDef["default"] = $default;
+    return $typeDef;
+  }
+
+  static function foreignType($table, $column = "id", $nullable = false)
   {
     if ($nullable)
-      return [ "type"=>"foreign", "table" => $table, "column" => $column, "nullable" => true, "default" => NULL ];
+      return [ "type"=>"foreign", "table" => $table, "column" => $column, "nullable" => true ];
     else
-      return [ "type"=>"foreign", "table" => $table, "column" => $column ];
+      return [ "type"=>"foreign", "table" => $table, "column" => $column, "default" => 0 ];
   }
 
-  static function int_type($nullable = false, $default = NULL)
-  { 
+  static function intType($default = 0, $nullable = false)
+  {
+    assert($nullable || $default !== NULL);
+    $typeDef = [ "type"=>"int", "nullable"=>$nullable ];
     if ($default !== NULL)
-      return array("type"=> "int", "default" => $default, "nullable"=>$nullable);
-    else
-      return array("type"=> "int", "nullable"=>$nullable);
+      $typeDef["default"] = $default;
+    return $typeDef;
   }
 
-  static function bool_type($nullable = false, $default = false)
+  static function uintType($default = 0, $nullable = false)
   {
-    return array("type"=>"bool", "default"=>$default?"1":"0", "nullable"=>$nullable);
+    $typeDef = self::intType($default, $nullable);
+    $typeDef["unsigned"] = true;
+    return $typeDef;
   }
 
-  static function text_type($nullable = false)
+  static function boolType($default = false, $nullable = false)
   {
+    $typeDef = [ "type"=>"bool", "nullable"=>$nullable ];
+    if ($default !== NULL)
+      $typeDef["default"] = $default?"1":"0";
+    return $typeDef;
+  }
+
+  static function textType($nullable = false)
+  {
+    // Text types cannot have default values.
     return [ "type"=>"text", "nullable"=>$nullable ];
   }
 
-  static function datetime_type($nullable = false, $default = NULL)
+  static function decimalType($units, $places, $default = 0, $nullable = false)
   {
+    assert($nullable || $default !== NULL);
+    $typeDef = [ "type"=>"decimal", "size"=> [ $units, $places ], "nullable"=>$nullable ];
     if ($default !== NULL)
-      return array("type"=>"datetime", "default" => $default, "nullable"=>$nullable);
-    else
-      return array("type"=>"datetime", "nullable"=>$nullable);
+      $typeDef["default"] = $default;
+    return $typeDef;
   }
 
-  static function date_type($nullable = false, $default = NULL)
+  static function enumType($values, $default = -1, $nullable = false)
   {
+    if ($default === -1) $default = $values[0];
+    assert($nullable || $default !== NULL);
+    $typeDef = [ "type"=>"enum", "values" => $values, "nullable" => $nullable ];
+    if ($default !== NULL) $typeDef["default"] = $default;
+    return $typeDef;
+  }
+
+  static function datetimeType($default = NULL, $nullable = false)
+  {
+    assert($nullable || $default !== NULL);
+    if ($default !== NULL)
+      return [ "type"=>"datetime", "default" => $default, "nullable"=>$nullable ];
+    else
+      return [ "type"=>"datetime", "nullable"=>$nullable ];
+  }
+
+  static function dateType($default = NULL, $nullable = false)
+  {
+    assert($nullable || $default !== NULL);
     if ($default == NULL)
       return [ "type" => "date", "nullable" => true ];
     else
       return [ "type" => "date", "nullable" => $nullable, "default" => $default ];
   }
 
-  static function timestamp_type($nullable = false, $update = false, $default = "CURRENT_TIMESTAMP")
+  static function timestampType($update = false, $default = "CURRENT_TIMESTAMP", $nullable = false)
   {
     if ($default === "CURRENT_TIMESTAMP")
-      return array("type"=>"timestamp", "defaultStamp" => true, "nullable"=>$nullable, "update" => $update);
+      return [ "type"=>"timestamp", "defaultStamp" => true, "nullable"=>$nullable, "update" => $update ];
     else  if ($default !== NULL)
-      return array("type"=>"timestamp", "default" => $default, "nullable"=>$nullable, "update" => $update);
+      return [ "type"=>"timestamp", "default" => $default, "nullable"=>$nullable, "update" => $update ];
     else
-      return array("type"=>"timestamp", "nullable"=>$nullable, "update" => $update);
+      return [ "type"=>"timestamp", "nullable"=>$nullable, "update" => $update ];
   }
 
-  static function decimal_type($units, $places, $nullable = false, $default = NULL)
-  {
-    if ($default !== NULL)
-      return array("type"=>"decimal", "default" => $default, "size"=> array($units, $places), "nullable"=>$nullable);
-    else
-      return array("type"=>"decimal", "size"=> array($units, $places), "nullable"=>$nullable);
-  }
-
-  static function string_type($default = NULL, $length = NULL)
-  {
-    $x = ["type"=>"string"];
-    if ($length) $x["size"] = $length;
-    if ($default !== NULL) $x["default"] = $defualt;
-    return $x;
-  }
-
-  static function enum_type($values, $nullable = false, $default = NULL)
-  {
-    $x = [ "type"=>"enum", "values" => $values, "nullable" => $nullable ];
-    if ($default !== NULL) $x["default"] = $default;
-    return $x;
-  }
 }
 
 //----------------------------------------------------------------------------
