@@ -12,8 +12,6 @@
 
 namespace Jaypha;
 
-require_once __dir__."/DBMySQL.php";
-
 //------------------------------------------------------------------------------
 //
 // DBDefinition
@@ -36,7 +34,7 @@ class FixDB
 
   private $connection;
   
-  function __construct(DBMySQL $connection)
+  function __construct(MySQLiExt $connection)
   {
     $this->connection = $connection;
   }
@@ -486,23 +484,31 @@ class FixDB
 
     $name = $def["name"];
     
-    $query = "create view `$name` as select ";
-    
-    $join = NULL;
-    $selects = [];
-    foreach ($def["tables"] as $tablename => &$columns)
+    $query = "create view `$name` as ";
+    if (isset($def["sql"]))
+      $query .= $def["sql"];
+    else
     {
-      if ($join == NULL) $join = $tablename;
-      foreach ($columns as $viewname => $columnname)
-        if (is_int($viewname))
-          $selects[] = "`$tablename`.`$columnname`";
-        else
-          $selects[] = "`$tablename`.`$columnname` as `$viewname`";
+      $query .= "select ";
+
+      $join = NULL;
+      $selects = [];
+      foreach ($def["tables"] as $tablename => &$columns)
+      {
+        if ($join == NULL) $join = $tablename;
+        foreach ($columns as $viewname => $columnname)
+          if (is_int($viewname))
+            $selects[] = "`$tablename`.`$columnname`";
+          else
+            $selects[] = "`$tablename`.`$columnname` as `$viewname`";
+      }
+      $query .= implode(",", $selects);
+      $query .= " from $join";
+      foreach ($def["joins"] as $table => $j)
+        $query .= " join $table on $j";
+      if (isset($def["wheres"]))
+        $query .= " where ".implode(",", $def["wheres"]);
     }
-    $query .= implode(",", $selects);
-    $query .= " from $join ";
-    foreach ($def["joins"] as $table => $j)
-      $query .= "join $table on $j";
 
     return $query;
   }

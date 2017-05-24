@@ -1,13 +1,10 @@
-# PHP FixDB
+# FixDB
 
 Written by Jason den Dulk
 
-A few utilities that can enhance the use of your MySQL databases.
+A database create/update/synchronise tool for use with MySQL.
 
-**DBMySQL** - Extends mysqli and adds many convenience methods for querying.  
-**DBMySQLVariables** - Database based store for arbitrary variables.  
-**FixDB** - A database create/update/synchronise tool.
-
+Note: DBMySQL has been moved into a separate package. See 'mysqli-ext'.
 Many tools exist these days for database maintenace, called "migration". They
 usually work by specifying the changes needed to the database, and then running
 the program to update the database.
@@ -22,12 +19,15 @@ initial definition plus a whole lot of changes.
 
 ## Requirements
 
-PHP with php-mysqli extension.
+PHP with php-mysqli extension.  
+Composer  
+jaypha\mysqli-ext
 
 ## Installation
 
-Just add it to your project wherever you find it convenient. Just make sure
-the files are all in the same directory.
+```
+composer require jaypha/fixdb
+```
 
 ## Versions for other databases.
 
