@@ -20,7 +20,9 @@ namespace Jaypha;
 
 class FixDB
 {
-  public $queries = [];
+  public $tableQueries = [];
+  public $viewQueries = [];
+  public $functionQueries = [];
 
   public $tablesDefined = [];
 
@@ -47,16 +49,16 @@ class FixDB
     {
       case "table":
         $sql = $this->getTableSql($def);
-        if ($sql) $this->queries[] = $sql;
+        if ($sql) $this->tableQueries[] = $sql;
         break;
       case "view":
-        $this->queries[] = "drop view if exists `{$def["name"]}`";
-        $this->queries[] = $this->getViewSql($def);
+        $this->viewQueries[] = "drop view if exists `{$def["name"]}`";
+        $this->viewQueries[] = $this->getViewSql($def);
         break;
       case "function":
         if ($this->verbose) echo "Function: {$def["name"]}\n";
-        $this->queries[] = "drop function if exists `{$def["name"]}`";
-        $this->queries[] = $this->getFunctionSql($def);
+        $this->functionQueries[] = "drop function if exists `{$def["name"]}`";
+        $this->functionQueries[] = $this->getFunctionSql($def);
         break;
     }
   }
@@ -68,32 +70,76 @@ class FixDB
     $tables = $this->connection->queryColumn("show tables");
     foreach($tables as $t)
       if (!in_array($t, $this->tablesDefined))
-        $this->queries[] = "drop table `$t`";
+        $this->tableQueries[] = "drop table `$t`";
   }
 
   //-------------------------------------------------------------------------
 
   function show()
   {
-    if (count($this->queries) != 0)
+    echo "---------------------------------------------------------------------\n"
+    echo "TABLES\n"
+    echo "---------------------------------------------------------------------\n"
+    if (count($this->tableQueries) != 0)
     {
-      foreach ($this->queries as $q)
+      foreach ($this->tableQueries as $q)
       {
-        echo "-------------------------------------------------------------------------\n";
         print_r($q);
-        echo "\n";
+        echo "-------------------------------------------------------------------------\n";
       }
-      echo "-------------------------------------------------------------------------\n";
     }
     else
-      echo "No alterations needed\n";
+      echo "No alterations\n";
+
+    echo "---------------------------------------------------------------------\n"
+    echo "VIEWS\n"
+    echo "---------------------------------------------------------------------\n"
+    if (count($this->viewQueries) != 0)
+    {
+      foreach ($this->viewQueries as $q)
+      {
+        print_r($q);
+        echo "-------------------------------------------------------------------------\n";
+      }
+    }
+    else
+      echo "No views defined\n";
+
+    echo "---------------------------------------------------------------------\n"
+    echo "FUNCTIONS\n"
+    echo "---------------------------------------------------------------------\n"
+    if (count($this->functionQueries) != 0)
+    {
+      foreach ($this->functionQueries as $q)
+      {
+        print_r($q);
+        echo "-------------------------------------------------------------------------\n";
+      }
+    }
+    else
+      echo "No functions defined\n";
+
   }
 
   //-------------------------------------------------------------------------
 
   function execute()
   {
-    foreach ($this->queries as $q)
+    foreach ($this->tableQueries as $q)
+    {
+      echo "--executing--------------------------------------------------------------\n";
+      print_r($q);
+      echo "\n";
+      $this->connection->query($q);    
+    }
+    foreach ($this->viewQueries as $q)
+    {
+      echo "--executing--------------------------------------------------------------\n";
+      print_r($q);
+      echo "\n";
+      $this->connection->query($q);    
+    }
+    foreach ($this->functionQueries as $q)
     {
       echo "--executing--------------------------------------------------------------\n";
       print_r($q);

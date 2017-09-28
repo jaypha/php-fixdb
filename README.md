@@ -4,7 +4,6 @@ Written by Jason den Dulk
 
 A database create/update/synchronise tool for use with MySQL.
 
-Note: DBMySQL has been moved into a separate package. See 'mysqli-ext'.
 Many tools exist these days for database maintenace, called "migration". They
 usually work by specifying the changes needed to the database, and then running
 the program to update the database.
@@ -26,7 +25,7 @@ jaypha\mysqli-ext
 ## Installation
 
 ```
-composer require jaypha/fixdb
+composer require jaypha/mysqli-fixdb
 ```
 
 ## Versions for other databases.
