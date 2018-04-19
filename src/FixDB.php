@@ -32,13 +32,13 @@ class FixDB
 
   public $verbose = false;
 
+  public $dbConn;
+
   //-------------------------------------------------------------------------
 
-  private $connection;
-  
-  function __construct(MySQLiExt $connection)
+  function __construct(MySQLiExt $c)
   {
-    $this->connection = $connection;
+    $this->dbConn = $c;
   }
 
   //-------------------------------------------------------------------------
@@ -48,15 +48,15 @@ class FixDB
     switch ($def["type"])
     {
       case "table":
-        $sql = $this->getTableSql($def);
+        $sql = $this->getFixTableSql($def);
         if ($sql) $this->tableQueries[] = $sql;
+        $this->tablesDefined[] = $def["name"];
         break;
       case "view":
         $this->viewQueries[] = "drop view if exists `{$def["name"]}`";
         $this->viewQueries[] = $this->getViewSql($def);
         break;
       case "function":
-        if ($this->verbose) echo "Function: {$def["name"]}\n";
         $this->functionQueries[] = "drop function if exists `{$def["name"]}`";
         $this->functionQueries[] = $this->getFunctionSql($def);
         break;
@@ -67,7 +67,7 @@ class FixDB
 
   function addClean()
   {
-    $tables = $this->connection->queryColumn("show tables");
+    $tables = $this->dbConn->queryColumn("show tables");
     foreach($tables as $t)
       if (!in_array($t, $this->tablesDefined))
         $this->tableQueries[] = "drop table `$t`";
@@ -130,197 +130,70 @@ class FixDB
       echo "--executing--------------------------------------------------------------\n";
       print_r($q);
       echo "\n";
-      $this->connection->query($q);    
+      $this->dbConn->q($q);    
     }
     foreach ($this->viewQueries as $q)
     {
       echo "--executing--------------------------------------------------------------\n";
       print_r($q);
       echo "\n";
-      $this->connection->query($q);    
+      $this->dbConn->q($q);    
     }
     foreach ($this->functionQueries as $q)
     {
       echo "--executing--------------------------------------------------------------\n";
       print_r($q);
       echo "\n";
-      $this->connection->query($q);    
+      $this->dbConn->q($q);    
     }
     echo "--finished---------------------------------------------------------------\n";
   }
 
   //-------------------------------------------------------------------------
 
+  function needToCreateTable($def)
+  {
+    if ($this->dbConn->tableExists($def["name"]))
+    {
+      return false;
+    }
+    else
+    {
+      if (isset($def["old_name"]))
+      {
+        if ($this->dbConn->tableExists($def["old_name"]))
+          return false; // Table is set to be renamed.
+      }
+      return true;
+    }
+  }
+
+  function fixTable($def)
+  {
+    $this->dbConn->q($this->getFixTableSql($def));
+  }
+
   function getTableSql($def)
   {
+    return getFixTableSql($def);
+  }
+  
+  function getFixTableSql($def)
+  {
     $this->tablesDefined[] = $def["name"];
-    if (isset($def["old_name"]) && $this->connection->tableExists($def["old_name"]))
-    {
-      if ($this->connection->tableExists($def["name"]))
-        throw new \Exception("Cannot rename table '{$def["old_name"]}' to '{$def["name"]}', table already exists.");
-
-      if ($this->verbose) echo "Altering '{$def["old_name"]}'\n";
-      $oldTable = $this->extractTable($def["old_name"]);
-      return $this->getAlterTableSql($def, $oldTable);
-    }
-    else if (!$this->connection->tableExists($def["name"]))
-    {
-      if ($this->verbose) echo "Creating table '{$def["name"]}'\n";
-        return $this->getCreateTableSql($def);
-    }
+    if ($this->needToCreateTable($def))
+      return $this->getCreateTableSql($def);
     else
-    {
-      if ($this->verbose) echo "Altering '{$def["name"]}'\n";
-      $oldTable = $this->extractTable($def["name"]);
-      $sql = $this->getAlterTableSql($def, $oldTable);
-      if ($sql)
-        return $sql;
-      else
-        return null;
-    }
+      return $this->getAlterTableSql($def);
   }
 
   //-------------------------------------------------------------------------
-
-  function getCreateTableSql($def)
-  {
-    $query = "create table {$def['name']} (";
-    $items = [];
-
-    if (empty($def["noid"]))
-      $items[] = "`id` int(11) unsigned not null auto_increment";
-
-    foreach ($def["columns"] as $name => &$item)
-      $items[] = $this->getColumnSql($name, $item);
-
-    if (empty($def['noid']))
-      $items[] = 'primary key(`id`)';
-
-    if (isset($def["indicies"]))
-      foreach ($def["indicies"] as $name => &$item)
-        $items[] = $this->getIndexSql($name, $item);
-
-    $query .= implode(", ", $items).") ";
-
-    $engine =  isset($def['engine'])?$def['engine']:$this->defaultEngine;
-    $charset = isset($def['charset'])?$def['charset']:$this->defaultCharset;
-    $collation = isset($def['collation'])?$def['collation']:$this->defaultCollation;
-    $query .= "engine=$engine default charset=$charset collate=$collation";
-
-    return $query;
-  }
-
-  //-------------------------------------------------------------------------
-
-  function getTypeSql($field)
-  {
-    if (!isset($field["type"]))
-      $field["type"] = "string";
-
-    switch ($field['type'])
-    {
-      case "string":
-        if (empty($field['size']))
-          $def = "varchar(255)";
-        else
-          $def = "varchar({$field['size']})";
-        break;
-      case "text":
-        $def = "text";
-        break;
-      case "int":
-        if (!isset($field['size']))
-          $def = 'int(11)';
-        else if ($field['size']<=2)
-          $def = "tinyint({$field['size']})";
-        else if ($field['size']<=5)
-          $def = "smallint({$field['size']})";
-        else
-          $def = "int({$field['size']})";
-        break;
-      case "decimal":
-        $def = "decimal({$field['size'][0]},{$field['size'][1]})";
-        break;
-      case "boolean":
-      case "bool":
-        $def = "tinyint(1)";
-        break;
-      case "foreign":
-        $def = "int(11) unsigned";
-        break;
-      case "enum":
-        foreach ($field['values'] as $label)
-          $values[] = $this->connection->real_escape_string($label);
-        
-        $def = "enum('".implode("','",$values)."')";
-        break;
-      case "timestamp":
-        $def = "timestamp";
-        if (isset($field["defaultStamp"]))
-          $def .= " default CURRENT_TIMESTAMP";
-        if ($field["update"])
-          $def .= " ON UPDATE CURRENT_TIMESTAMP";
-        break;
-        
-      default:
-        $def = $field['type'];
-    }
-
-    if (!empty($field['unsigned']))
-      $def .= ' unsigned';
-
-    return $def;
-  }
+  // No longer used
   
-  //-------------------------------------------------------------------------
-
-  function getColumnSql($name, &$field)
-  {
-    $sql = "`$name` ";
-    $sql .= $this->getTypeSql($field);
-
-    if (!empty($field["nullable"]))
-      $sql .= " null";
-    else
-      $sql .= " not null";
-      
-    if (array_key_exists("default", $field) && $field['default'] !== NULL)
-    {
-      if (self::isStringType($field["type"]))
-        $sql .= " default '{$field['default']}'";
-      else
-        $sql .= " default {$field['default']}";
-    }
-    else if (!empty($field["nullable"])) // Nullable fields always default.
-      $sql .= " default null";
-        
-    return $sql;
-  }
-
-  //-------------------------------------------------------------------------
-
-  function getIndexSql($name, &$fields)
-  {
-    if (!array_key_exists("columns", $fields))
-      $fields["columns"] = [ $name ];
-
-    if (!empty($fields['fulltext']))
-      $sql = "fulltext index";
-    else if (!empty($fields['unique']))
-      $sql = "unique index";
-    else
-      $sql = "index";
-    $sql .= "`$name` (".implode(",",$fields["columns"]).")";
-    
-    return $sql;
-  }
-  
-  //-------------------------------------------------------------------------
-
   function extractTable(string $name)
   {
     $def = [ "name" => $name, "columns" => [], "indicies" => [] ];
-    $data = $this->connection->queryData("show columns from `$name`");
+    $data = $this->dbConn->queryData("show columns from `$name`");
 
     foreach ($data as $row)
     {
@@ -333,7 +206,7 @@ class FixDB
       $def["columns"][$row["Field"]] = $colDef;
     }
     
-    $data = $this->connection->queryData("show index from `$name`");
+    $data = $this->dbConn->queryData("show index from `$name`");
 
     foreach ($data as $row)
     {
@@ -361,165 +234,149 @@ class FixDB
     return $def;
   }
 
+  function extractColumnInfo($fieldInfo)
+  {
+    return $this->dbConn->queryData("show columns from `$tableName`", "Field");
+  }
+
+  function extractIndexInfo($tableName)
+  {
+    $keys = [];
+    $data = $this->dbConn->queryData("show index from `$tableName`");
+    foreach ($data as $row)
+    {
+      $iname = $row["Key_name"];
+      if ($iname == "PRIMARY") $iname = "primary";
+      if (!array_key_exists($iname, $keys))
+      {
+        $keys[$iname] = $row;
+        $keys[$iname]["Column_name"] = [];
+      }  
+      $keys[$iname]["Column_name"][$row["Seq_in_index"]-1] = $row["Column_name"];
+    }
+    return $keys;
+  }
+
   //-------------------------------------------------------------------------
 
-  function getAlterTableSql($newDef, $oldDef)
+  function getAlterTableSql($tableDef)
   {
     $drops = [];
     $names = [];
     $adds = [];
+    $tableName = $tableDef["name"];
 
-    $originalName = $oldDef["name"];
-
-    if ($newDef["name"] != $oldDef["name"])
+    if (!($tableDef["noid"] ?? false))
     {
-      if ($this->verbose) echo "  Rename {$oldDef["name"]} to {$newDef["name"]}\n";
-      $adds[] = "rename to ".$newDef["name"];
+      $tableDef["columns"]["id"] = self::idType();
+      $tableDef["indicies"]["primary"] = [ "columns" => ["id"]];
     }
 
-    //-----------------------------------
-    // Columns
-
-    if (empty($newDef["noid"]))
+    if (isset($tableDef["old_name"]))
     {
-      $newDef["columns"]["id"] = [
-        "type" => "int",
-        "unsigned" => true,
-        "auto_increment" => true,
-        "nullable" => false,
-        "default" => NULL,
-      ];
-      $newDef["primary"][] = "id";
-      unset($newDef["noid"]);
-    }
-    if (!isset($newDef["indicies"])) $newDef["indicies"] = [];
-
-    //-----------------------------------
-    // Go through column definitions. Add new columns and alter existing ones if
-    // different.
-
-    foreach ($newDef["columns"] as $name => $colDef)
-    {
-      if (!array_key_exists("default", $colDef))
-        $colDef["default"] = NULL;
-      if (isset($colDef["old_name"]) && array_key_exists($colDef["old_name"], $oldDef["columns"]))
+      if ($this->dbConn->tableExists($tableDef["old_name"]))
       {
-        // Column is being renamed, must redefine.
-        if (array_key_exists($name, $oldDef["columns"]))
-          throw new Exception("old name and new name both exist");
-
-        $names[] = $colDef["old_name"];
-        if ($this->verbose) echo "  rename column '{$colDef["old_name"]}' to '$name'\n";
-        $adds[] = "change `{$colDef["old_name"]}` ".getColumnSql($name, $colDef);
+        if ($this->dbConn->tableExists($tableDef["name"]))
+          throw new \Exception("Both tables '{$tableDef["old_name"]}' to '{$tableDef["name"]}' exist.");
+        $tableName = $tableDef["old_name"];
+        $adds[] = "rename to `".$tableDef["name"]."`";
       }
-      else if (array_key_exists($name, $oldDef["columns"]))
+    }
+ 
+    // Columns
+    
+    $colData = $this->dbConn->queryData("show columns from `$tableName`", "Field");
+    
+    foreach ($tableDef["columns"] as $name => $colDef)
+    {
+      if (isset($colDef["old_name"]) && array_key_exists($colDef["old_name"],$colData))
       {
-        // Column of same name exists, so alter if different.
-
-        $names[] = $name;
-        $change = "";
-        $type = $this->getTypeSql($colDef);
-        $oldColDef = $oldDef["columns"][$name];
-
-        if (
-          ($type != $oldColDef["type"]) ||
-          ($colDef["default"] ?? NULL) != ($oldColDef["default"] ?? NULL) ||
-          ($colDef["nullable"] ?? false) != ($oldColDef["nullable"] ?? false) ||
-          ($colDef["auto_increment"] ?? false) != ($oldColDef["auto_increment"] ?? false)
-        )
-        {
-          if ($this->verbose) echo "  modify column '$name'\n";
-          $adds[] = "modify ".$this->getColumnSql($name, $colDef);
-        }
+        if (array_key_exists($name,$colData))
+          throw new Exception("Both columns '{$colDef["old_name"]}' and '$name' are defined in table '$tableName'");
+        $adds[] = "change `{$colDef["old_name"]}` ".$this->getColumnSql($name, $colDef);
+        $names[] = $colDef["old_name"];
       }
       else
       {
-        // New Column
-
-        if ($this->verbose) echo "  adding column '$name'\n";
-        $adds[] = "add column ".$this->getColumnSql($name, $colDef);
+        if (array_key_exists($name,$colData))
+        {
+          if (!$this->areDefsSame($colDef, $colData[$name]))
+            $adds[] = "modify ".$this->getColumnSql($name, $colDef);
+        }
+        else
+          $adds[] = "add column ".$this->getColumnSql($name, $colDef);
+        $names[] = $name;
       }
     }
 
     // Go through existing columns and remove columns not in the new definition.
-    foreach ($oldDef["columns"] as $name =>$colDef)
-    {
+    foreach (array_keys($colData) as $name)
       if (!in_array($name, $names))
-      {
-        if ($this->verbose) echo "  removing $name\n";
         $drops[] = "drop column `$name`";
-      }
-    }
 
-    //-----------------------------------
     // Indicies
 
-    $hasPrimary = false;
+    $idxData = $this->extractIndexInfo($tableName);
 
-    foreach ($oldDef["indicies"] as $name => $index)
+    foreach (array_keys($idxData) as $name)
     {
-      if ($name != "PRIMARY")
-      {
-        // Drop index if not in new def.
-
-        if (!array_key_exists($name, $newDef["indicies"]))
-        {
-          if ($this->verbose) echo "  drop index '$name'\n";
-          $drops[] = "drop index `$name`";
-        }
-      }
+      if (!array_key_exists($name, $tableDef["indicies"]))
+        $drops[] = "drop ".$this->getIndexName($name);
     }
 
-        
-    if (array_diff($oldDef["primary"] ?? [], $newDef["primary"] ?? []) !== [])
+    foreach ($tableDef["indicies"] as $name => $idxDef)
     {
-      if (isset($oldDdef["primary"]))
-      {
-        if ($this->verbose) echo "  drop primary key\n";
-        $drops[] = "drop primary key";
-      }
-      if (isset($newDdef["primary"]))
-      {
-        if ($this->verbose) echo "  add primary key '".implode("','",$newDef["primary"])."'";
-        $adds[] = "add primary key (`".implode("`,`",$newDef["primary"])."`)";
-      }
-    }
+      if (!array_key_exists("columns", $idxDef))
+        $idxDef["columns"] = [ $name ];
 
-    foreach ($newDef["indicies"] as $name => $idx)
-    {
-      if (!array_key_exists("columns", $idx))
-        $idx["columns"] = [ $name ];
-
-      if (!array_key_exists($name, $oldDef["indicies"]))
+      if (!array_key_exists($name, $idxData))
+        $adds[]  = "add ".$this->getIndexSql($name, $idxDef);
+      else if (!$this->areIndexDefsSame($idxDef, $idxData[$name]))
       {
-        if ($this->verbose) echo "  add index '$name'\n";
-        $adds[] = "add ".$this->getIndexSql($name, $idx);
-      }
-      else
-      {
-        if
-        (
-          (array_diff($idx["columns"] ?? [$name], $oldDef["indicies"][$name]["columns"]) !== []) ||
-          ($idx["unique"] ?? false) != ($oldDef["indicies"][$name]["unique"] ?? false) ||
-          ($idx["fulltext"] ?? false) != ($oldDef["indicies"][$name]["fulltext"] ?? false)
-        )
-        {
-          if ($this->verbose) echo "  altering index '$name'\n";
-          $drops[] = "drop index `$name`";
-          $adds[]  = "add ".$this->getIndexSql($name, $idx);
-        }
+        $drops[] = "drop ".$this->getIndexName($name);
+        $adds[]  = "add ".$this->getIndexSql($name, $idxDef);
       }
     }
 
     $items = implode(",",array_merge($drops, $adds));
 
     if (strlen($items))
-      return "alter table `{$oldDef["name"]}` $items";
+      return "alter table `$tableName` $items";
     else
     {
-      if ($this->verbose) echo "  no alterations\n";
       return null;
     }
+  }
+  
+  //-------------------------------------------------------
+
+  function areDefsSame($colDef, $fieldInfo)
+  {
+    return (
+      ($this->getTypeSql($colDef) == $fieldInfo["Type"])
+      && (empty($colDef["auto_increment"]) !=
+          ($fieldInfo["Extra"] == "auto_increment"))
+      && (empty($colDef["nullable"]) !=
+          ($fieldInfo["Null"] == "YES"))
+      && (isset($colDef["default"]) ?
+          ($fieldInfo["Default"] !== null && $fieldInfo["Default"] == $colDef["default"]) :
+          ($fieldInfo["Default"] === null))
+    );
+  }
+
+  //-------------------------------------------------------
+
+  function areIndexDefsSame($idxDef, $indexInfo)
+  {
+    if (($idxDef["columns"] ?? [$indexInfo["Key_name"]]) != $indexInfo["Column_name"])
+      return false;
+    if ($indexInfo["Key_name"] != "PRIMARY")
+      if ( ($idxDef["unique"] ?? false) != ($indexInfo["Non_unique"] == "0") )
+        return false;
+    if (($idx["fulltext"] ?? false) != ($indexInfo["Index_type"] == "FULLTEXT"))
+      return false;
+
+    return true;
   }
 
   //-------------------------------------------------------------------------
@@ -597,8 +454,168 @@ class FixDB
 
     return $query;
   }
- 
-  //-------------------------------------------------------------------------
+
+  //-------------------------------------------------------
+
+  function createTable($def)
+  {
+    $this->dbConn->q($this->getCreateTableSql($def));
+  }
+
+  //-------------------------------------------------------
+
+  function getCreateTableSql($def)
+  {
+    if (isset($def["temporary"]))
+      $query = "create temporary table {$def['name']} (";
+    else
+      $query = "create table {$def['name']} (";
+
+    $items = [];
+
+    if (empty($def["noid"]))
+      $items[] = "`id` int(11) unsigned not null auto_increment";
+
+    foreach ($def["columns"] as $name => &$item)
+      $items[] = $this->getColumnSql($name, $item);
+
+    if (empty($def['noid']))
+      $items[] = 'primary key(`id`)';
+
+    if (isset($def["indicies"]))
+      foreach ($def["indicies"] as $name => &$item)
+        $items[] = $this->getIndexSql($name, $item);
+
+    $query .= implode(", ", $items).") ";
+
+    $engine =  isset($def['engine'])?$def['engine']:$this->defaultEngine;
+    $charset = isset($def['charset'])?$def['charset']:$this->defaultCharset;
+    $collation = isset($def['collation'])?$def['collation']:$this->defaultCollation;
+    $query .= "engine=$engine default charset=$charset collate=$collation";
+
+    return $query;
+  }
+
+  //-------------------------------------------------------
+
+  function getColumnSql($name, $field)
+  {
+    $sql = "`$name` ";
+    $sql .= $this->getTypeSql($field);
+
+    if (!empty($field["nullable"]))
+      $sql .= " null";
+    else
+      $sql .= " not null";
+
+    if ($field["auto_increment"] ?? false) 
+      $sql .= " auto_increment";
+
+    else if (array_key_exists("default", $field) && $field['default'] !== NULL)
+    {
+      if (self::isStringType($field["type"]) && $field['default'] != "CURRENT_TIMESTAMP")
+        $sql .= " default '{$field['default']}'";
+      else
+        $sql .= " default {$field['default']}";
+    }
+    else if (!empty($field["nullable"])) // Nullable fields always default.
+      $sql .= " default null";
+
+    if ($field["type"] == "timestamp" || $field["type"] == "datetime")
+    {
+      if (!empty($field["update"]))
+        $sql .= " on update CURRENT_TIMESTAMP";
+    }
+        
+    return $sql;
+  }
+
+  //-------------------------------------------------------
+
+  function getIndexName($name)
+  {
+    if ($name == "primary")
+      return "primary key";
+    else
+      return "index `$name`";
+  }
+
+  function getIndexSql($name, $fields)
+  {
+    if (!array_key_exists("columns", $fields))
+      $fields["columns"] = [ $name ];
+
+    if ($name == "primary")
+      $sql = "";
+    else if ($fields['fulltext'] ?? false)
+      $sql = "fulltext ";
+    else if ($fields['unique'] ?? false)
+      $sql = "unique ";
+    else
+      $sql = "";
+    $sql .= $this->getIndexName($name)." (`".implode("`,`",$fields["columns"])."`)";
+    
+    return $sql;
+  }
+
+  //-------------------------------------------------------
+
+  function getTypeSql(array $field)
+  {
+    if (!isset($field["type"]))
+      $field["type"] = "string";
+
+    switch ($field['type'])
+    {
+      case "string":
+        if (empty($field['size']))
+          $type = "varchar(255)";
+        else
+          $type = "varchar({$field['size']})";
+        break;
+      case "text":
+        $type = "text";
+        break;
+      case "int":
+        if (!isset($field['size']))
+          $type = 'int(11)';
+        else if ($field['size']<=2)
+          $type = "tinyint({$field['size']})";
+        else if ($field['size']<=5)
+          $type = "smallint({$field['size']})";
+        else
+          $type = "int({$field['size']})";
+        break;
+      case "decimal":
+        $type = "decimal({$field['size'][0]},{$field['size'][1]})";
+        break;
+      case "boolean":
+      case "bool":
+        $type = "tinyint(1)";
+        break;
+      case "foreign":
+        $type = "int(11) unsigned";
+        break;
+      case "enum":
+        foreach ($field['values'] as $label)
+          $values[] = $this->dbConn->real_escape_string($label);
+        $type = "enum('".implode("','",$values)."')";
+        break;
+      case "timestamp":
+        $type = "timestamp";
+        break;
+        
+      default:
+        $type = $field['type'];
+    }
+
+    if (!empty($field['unsigned']))
+      $type .= ' unsigned';
+
+    return $type;
+  }
+
+  //-------------------------------------------------------
 
   static function isStringType($type)
   {
@@ -607,6 +624,7 @@ class FixDB
       case "enum":
       case "password":
       case "datetime":
+      case "timestamp":
       case "date":
       case "time":
       case "string":
@@ -617,16 +635,27 @@ class FixDB
     }
   }
 
-  //----------------------------------------------------------------------------
-  // The following functions are shortcut definitions of various database types.
+  //-------------------------------------------------------
+  // Type definition shortcuts
   // Under strict rules, any field that is not null, cannot have an implied
   // default.
 
+  static function idType()
+  {
+    return [
+      "type" => "int",
+      "unsigned" => true,
+      "auto_increment" => true,
+      "nullable" => false,
+    ];
+  }
+
   static function stringType($length = 255, $default = "")
   {
+    assert($default !== NULL);
     $typeDef = ["type"=>"string"];
     if ($length) $typeDef["size"] = $length;
-    if ($default !== NULL) $typeDef["default"] = $default;
+    $typeDef["default"] = $default;
     return $typeDef;
   }
 
@@ -677,10 +706,12 @@ class FixDB
     return $typeDef;
   }
 
-  static function enumType($values, $default = -1, $nullable = false)
+  static function enumType(array $values, $default = -1, $nullable = false)
   {
+    assert(count($values) != 0);
     if ($default === -1) $default = $values[0];
     assert($nullable || $default !== NULL);
+    assert($default === NULL || in_array($default, $values));
     $typeDef = [ "type"=>"enum", "values" => $values, "nullable" => $nullable ];
     if ($default !== NULL) $typeDef["default"] = $default;
     return $typeDef;
@@ -695,7 +726,7 @@ class FixDB
       return [ "type"=>"datetime", "nullable"=>$nullable ];
   }
 
-  static function dateType($default = NULL, $nullable = false)
+  static function dateType($default, $nullable = false)
   {
     assert($nullable || $default !== NULL);
     if ($default == NULL)
@@ -706,14 +737,12 @@ class FixDB
 
   static function timestampType($update = false, $default = "CURRENT_TIMESTAMP", $nullable = false)
   {
-    if ($default === "CURRENT_TIMESTAMP")
-      return [ "type"=>"timestamp", "defaultStamp" => true, "nullable"=>$nullable, "update" => $update ];
-    else  if ($default !== NULL)
+    assert($nullable || $default !== NULL);
+    if ($default !== NULL)
       return [ "type"=>"timestamp", "default" => $default, "nullable"=>$nullable, "update" => $update ];
     else
       return [ "type"=>"timestamp", "nullable"=>$nullable, "update" => $update ];
   }
-
 }
 
 //----------------------------------------------------------------------------

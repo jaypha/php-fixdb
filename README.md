@@ -31,7 +31,7 @@ composer require jaypha/mysqli-fixdb
 ## Versions for other databases.
 
 There are no plans to create versions for other databases. It shouldn't be too
-difficult to do so if you are so inclined. I am also open to commissions.
+difficult to do so if you are so inclined.
 
 ## License
 

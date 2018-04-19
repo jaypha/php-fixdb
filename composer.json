@@ -3,7 +3,11 @@
   "description": "A database create/update/synchronise tool",
   "type": "library",
   "require": {
+    "php": "^5.0 || ^7.0",
     "jaypha/mysqli-ext": "^0.1"
+  },
+  "require-dev": {
+    "phpunit/phpunit": "^6"
   },
   "license": "BSL-1.0",
   "autoload" : {
