@@ -10,10 +10,10 @@
     </testsuite>
   </testsuites>
    <php>
-        <var name="DB_HOST" value="localhost" />
-        <var name="DB_USER" value="jason" />
-        <var name="DB_PASSWD" value="dogmeat" />
-        <var name="DB_DBNAME" value="tasks" />
+        <var name="DB_HOST" value="" />
+        <var name="DB_USER" value="" />
+        <var name="DB_PASSWD" value="" />
+        <var name="DB_DBNAME" value="" />
     </php>  <!--
   <filter>
     <whitelist processUncoveredFilesFromWhitelist="true">
