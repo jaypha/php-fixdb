@@ -127,26 +127,36 @@ class FixDB
   {
     foreach ($this->tableQueries as $q)
     {
-      echo "--executing--------------------------------------------------------------\n";
-      print_r($q);
-      echo "\n";
+      if ($this->verbose)
+      {
+        echo "--executing--------------------------------------------------------------\n";
+        print_r($q);
+        echo "\n";
+      }
       $this->dbConn->q($q);    
     }
     foreach ($this->viewQueries as $q)
     {
-      echo "--executing--------------------------------------------------------------\n";
-      print_r($q);
-      echo "\n";
+      if ($this->verbose)
+      {
+        echo "--executing--------------------------------------------------------------\n";
+        print_r($q);
+        echo "\n";
+      }
       $this->dbConn->q($q);    
     }
     foreach ($this->functionQueries as $q)
     {
-      echo "--executing--------------------------------------------------------------\n";
-      print_r($q);
-      echo "\n";
+      if ($this->verbose)
+      {
+        echo "--executing--------------------------------------------------------------\n";
+        print_r($q);
+        echo "\n";
+      }
       $this->dbConn->q($q);    
     }
-    echo "--finished---------------------------------------------------------------\n";
+    if ($this->verbose)
+      echo "--finished---------------------------------------------------------------\n";
   }
 
   //-------------------------------------------------------------------------
