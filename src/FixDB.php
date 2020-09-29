@@ -1,14 +1,7 @@
 <?php
-/*
- * A database create/update/synchronise tool.
- *
- * Copyright (C) 2017 Jaypha
- *
- * Distributed under the Boost Software License, Version 1.0.
- * (See http://www.boost.org/LICENSE_1_0.txt)
- *
- * Authors: Jason den Dulk
- */
+//------------------------------------------------------------------------------
+// A MySQL database create/update/synchronise tool.
+//------------------------------------------------------------------------------
 
 namespace Jaypha;
 
@@ -85,7 +78,7 @@ class FixDB
       foreach ($this->tableQueries as $q)
       {
         print_r($q);
-        echo "-------------------------------------------------------------------------\n";
+        echo "\n-------------------------------------------------------------------------\n";
       }
     }
     else
@@ -99,7 +92,7 @@ class FixDB
       foreach ($this->viewQueries as $q)
       {
         print_r($q);
-        echo "-------------------------------------------------------------------------\n";
+        echo "\n-------------------------------------------------------------------------\n";
       }
     }
     else
@@ -113,7 +106,7 @@ class FixDB
       foreach ($this->functionQueries as $q)
       {
         print_r($q);
-        echo "-------------------------------------------------------------------------\n";
+        echo "\n-------------------------------------------------------------------------\n";
       }
     }
     else
@@ -299,6 +292,8 @@ class FixDB
     
     foreach ($tableDef["columns"] as $name => $colDef)
     {
+      if ($colDef instanceof FixDBTypeDef) $colDef = $colDef->asArray();
+
       if (isset($colDef["old_name"]) && array_key_exists($colDef["old_name"],$colData))
       {
         if (array_key_exists($name,$colData))
@@ -393,8 +388,6 @@ class FixDB
 
   function getViewSql($def)
   {
-    echo "View: {$def["name"]}\n";
-
     $name = $def["name"];
     
     $query = "create view `$name` as ";
@@ -511,6 +504,10 @@ class FixDB
   function getColumnSql($name, $field)
   {
     $sql = "`$name` ";
+
+    if ($field instanceof FixDBTypeDef)
+      $field = $field->asArray();
+
     $sql .= $this->getTypeSql($field);
 
     if (!empty($field["nullable"]))
@@ -533,7 +530,7 @@ class FixDB
 
     if ($field["type"] == "timestamp" || $field["type"] == "datetime")
     {
-      if (!empty($field["update"]))
+      if ($field["update"] ?? false)
         $sql .= " on update CURRENT_TIMESTAMP";
     }
         
@@ -626,6 +623,7 @@ class FixDB
   }
 
   //-------------------------------------------------------
+  // By "string type", the values require surrouding quotes.
 
   static function isStringType($type)
   {
@@ -639,6 +637,20 @@ class FixDB
       case "time":
       case "string":
       case "text":
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  static function isNumericType($type)
+  {
+    switch($type)
+    {
+      case "uint":
+      case "int":
+      case "decimal":
+      case "bool":
         return true;
       default:
         return false;
@@ -756,4 +768,8 @@ class FixDB
 }
 
 //----------------------------------------------------------------------------
+// Copyright (C) 2017-20 Jaypha.
+// License: BSL-1.0
+// Author: Jason den Dulk
+//
 

@@ -6,6 +6,7 @@
 use PHPUnit\Framework\TestCase;
 use Jaypha\MySQLiExt;
 use Jaypha\FixDB;
+use Jaypha\FixDBTypeDef;
 
 class AlterTableTest extends TestCase
 {
@@ -29,7 +30,7 @@ class AlterTableTest extends TestCase
       "columns" => [
         "id" => FixDB::idType(),
         "col1" => FixDB::stringType(),
-        "col2" => FixDB::stringType(132, "abc")
+        "col2" => FixDBTypeDef::string()->size(132)->default("abc")
       ],
       "indicies" => [
         "primary" => [ "columns" => [ "id" ] ],
@@ -49,7 +50,7 @@ class AlterTableTest extends TestCase
     unset($newDef["columns"]["col2"]);
     unset($newDef["indicies"]["mix1"]);
     $newDef["columns"]["col1"]["size"] = 250;
-    $newDef["columns"]["col3"] = FixDB::dateType(null,true);
+    $newDef["columns"]["col3"] = FixDBTypeDef::date()->nullable();
 
     $sql = self::$fixdb->fixTable($newDef);
     $sql = self::$fixdb->getAlterTableSql($newDef);
