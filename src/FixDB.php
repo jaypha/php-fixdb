@@ -651,6 +651,7 @@ class FixDB
       case "int":
       case "decimal":
       case "bool":
+      case "foreign":
         return true;
       default:
         return false;

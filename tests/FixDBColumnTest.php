@@ -152,6 +152,13 @@ class FixDBColumnTest extends TestCase
 
   function testDatetimeType()
   {
+    $typeDef = FixDBTypeDef::datetime();
+    $def = $typeDef->asArray();
+    $this->assertTrue(is_array($def));
+    $this->assertEquals($def["type"], "datetime");
+    $this->assertFalse($def["nullable"]??false);
+    $this->assertEquals($def["default"], "1970-01-01 00:00:00");
+
     $typeDef = FixDBTypeDef::datetime()->default("1980-02-01 12:05:05");
     $def = $typeDef->asArray();
     $this->assertTrue(is_array($def));
@@ -169,6 +176,13 @@ class FixDBColumnTest extends TestCase
 
   function testDateType()
   {
+    $typeDef = FixDBTypeDef::date();
+    $def = $typeDef->asArray();
+    $this->assertTrue(is_array($def));
+    $this->assertEquals($def["type"], "date");
+    $this->assertFalse($def["nullable"]??false);
+    $this->assertEquals($def["default"], "1970-01-01");
+
     $typeDef = FixDBTypeDef::date()->default("1980-02-01");
     $def = $typeDef->asArray();
     $this->assertTrue(is_array($def));
@@ -193,6 +207,19 @@ class FixDBColumnTest extends TestCase
     $this->assertFalse($def["nullable"]??false);
     $this->assertEquals($def["default"], "CURRENT_TIMESTAMP");
     $this->assertFalse($def["update"]??false);
+  }
+
+  function testForeignType()
+  {
+    $typeDef = FixDBTypeDef::foreign()->table("jill");
+    $def = $typeDef->asArray();
+    $this->assertTrue(is_array($def));
+    $this->assertEquals($def["type"], "foreign");
+    $this->assertEquals($def["table"], "jill");
+    $this->assertEquals($def["column"], "id");
+    $typeDef = $typeDef->column("name");
+    $def = $typeDef->asArray();
+    $this->assertEquals($def["column"], "name");
   }
 }
 

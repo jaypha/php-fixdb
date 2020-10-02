@@ -7,6 +7,7 @@ namespace Jaypha;
 
 class FixDBTypeDef
 {
+  static function foreign() { return (new FixDBTypeDef("foreign"))->column("id"); }
   static function string() { return (new FixDBTypeDef("string"))->default(""); }
   static function text() { return new FixDBTypeDef("text"); }
   static function bool() { return new FixDBTypeDef("bool"); }
@@ -60,22 +61,17 @@ class FixDBTypeDef
     return $this;
   }
 
-  function update($update)
-  {
-    $this->def["update"] = $update;
-    return $this;
-  }
-
-  function autoIncrement($autoIncrement = true)
-  {
-    $this->def["auto_increment"] = $autoIncrement;
-    return $this;
-  }
-
+  function update($update) { $this->def["update"] = $update; return $this; }
+  function autoIncrement($autoIncrement = true) { $this->def["auto_increment"] = $autoIncrement; return $this; }
   function oldName($oldName) { $this->def["old_name"] = $oldName; return $this; }
+
+  function table($table) { $this->def["table"] = $table; return $this; }
+  function column($column) { $this->def["column"] = $column; return $this; }
 
   function asArray()
   {
+    $def = $this->def;
+
     if ($this->type == "enum")
     {
       if (!isset($this->def["values"]))
@@ -87,17 +83,21 @@ class FixDBTypeDef
       if (!isset($this->def["default"]))
       {
         if (FixDB::isNumericType($this->type))
-          $this->def["default"] = 0;
+          $def["default"] = 0;
         else if ($this->type == "enum")
-          $this->def["default"] = $this->def["values"][0];
+          $def["default"] = $this->def["values"][0];
         else if ($this->type == "timestamp")
-          $this->def["default"] = "CURRENT_TIMESTAMP";
+          $def["default"] = "CURRENT_TIMESTAMP";
+        else if ($this->type == "date")
+          $def["default"] = "1970-01-01";
+        else if ($this->type == "datetime")
+          $def["default"] = "1970-01-01 00:00:00";
         else if ($this->type != "text")
           throw new \LogicException("Type must have a default if not nullable.");
       }
     }
-    $this->def["type"] = $this->type;
-    return $this->def;
+    $def["type"] = $this->type;
+    return $def;
   }
 }
 
